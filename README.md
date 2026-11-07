@@ -6,6 +6,7 @@
 - 🛠️ Scripts that build the whole lab from a clean Mac: two kind clusters, SeaweedFS S3, Velero + Kopia
 - 🎬 Five scripted DR flows with byte-level data verification, measured RTO/RPO, and presenter tooling
 - 🧭 In-depth walkthrough: [`docs/demo-flows-explained.md`](docs/demo-flows-explained.md)
+- 📝 Write-up on Medium: [I Deleted My Kubernetes Cluster on Purpose. Here's How Velero Brought It Back.](https://medium.com/@simonjday/i-deleted-my-kubernetes-cluster-on-purpose-heres-how-velero-brought-it-back-6656f9dd3594)
 
 > ⚠️ Lab only: credentials in `scripts/env.sh` are throwaway demo values. Don't reuse this layout for production backups as-is.
 
