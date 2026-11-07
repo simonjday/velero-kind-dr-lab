@@ -74,8 +74,8 @@ flowchart LR
 
 | Proof | SQL | Used in |
 |---|---|---|
-| **Fingerprint** | `count(*) || ':' || md5(string_agg(id|item|created_at ORDER BY id))`, giving for example `1250:9b1e…` | Flows 1, 2 (quiet), 4, 5. One changed byte in any row changes the hash |
-| **Row-hash prefix** | One line per row, `id|md5(item|created_at)`, saved to `.state/*.txt` | Flow 2 (live). The restored table must be an exact **prefix** of the primary's last state. The missing tail is the data loss |
+| **Fingerprint** | `count(*) \|\| ':' \|\| md5(string_agg(id\|item\|created_at ORDER BY id))`, giving for example `1250:9b1e…` | Flows 1, 2 (quiet), 4, 5. One changed byte in any row changes the hash |
+| **Row-hash prefix** | One line per row, `id\|md5(item\|created_at)`, saved to `.state/*.txt` | Flow 2 (live). The restored table must be an exact **prefix** of the primary's last state. The missing tail is the data loss |
 | **Writer's server stamp** | `order-writer` writes `live@<pg_postmaster_start_time>` | Flow 2 (live). Rows from the old site and the new site carry **different stamps**, so the cut-over point is visible in the data itself |
 
 ---
