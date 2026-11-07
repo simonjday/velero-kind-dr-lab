@@ -1,0 +1,9 @@
+# runtime state: generated S3 creds, kubeconfig-adjacent data, row dumps
+.state/
+# pinned velero CLI downloaded by 00-prereqs.sh
+bin/
+# rendered by 03-install-velero.sh - contains the cloud-credentials Secret in plain text
+gitops/primary/
+gitops/dr/
+*.tar.gz
+.DS_Store

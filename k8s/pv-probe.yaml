@@ -1,0 +1,31 @@
+# Throwaway probe: confirms local-fsb yields spec.local PVs (not hostPath)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pv-probe
+  namespace: default
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-fsb
+  resources:
+    requests:
+      storage: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pv-probe
+  namespace: default
+spec:
+  restartPolicy: Never
+  containers:
+    - name: probe
+      image: busybox:1.37
+      command: ["sh", "-c", "echo ok > /data/ok && sleep 5"]
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: pv-probe

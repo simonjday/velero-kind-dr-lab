@@ -1,0 +1,29 @@
+# Optional GitOps path: commit gitops/primary/velero-install.yaml (minus the
+# cloud-credentials Secret - deliver that via SealedSecrets/ESO) to Gitea and let
+# ArgoCD own the Velero install. Backups/Restores stay operational actions.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: velero-primary
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: http://gitea-http.gitea.svc.cluster.local:3000/lab/velero-kind-dr-lab.git
+    targetRevision: main
+    path: gitops/primary
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: velero
+  syncPolicy:
+    automated:
+      prune: false      # never let Argo prune Velero CRs/BSL during an incident
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+  ignoreDifferences:
+    # Flipped imperatively during failover (flow 2/5) - don't fight it
+    - group: velero.io
+      kind: BackupStorageLocation
+      jsonPointers:
+        - /spec/accessMode

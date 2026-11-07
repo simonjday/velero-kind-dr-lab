@@ -1,0 +1,14 @@
+# kind's default 'standard' class provisions hostPath PVs, which Velero
+# File System Backup skips. Asking local-path-provisioner for 'local' PVs
+# makes kubelet bind-mount them under /var/lib/kubelet/pods, where the
+# Velero node-agent can read them.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-fsb
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+    defaultVolumeType: local
+provisioner: rancher.io/local-path
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer

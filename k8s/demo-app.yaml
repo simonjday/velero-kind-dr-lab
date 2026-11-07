@@ -1,0 +1,198 @@
+# Stateful demo workload: PostgreSQL (PVC on local-fsb) + stateless nginx front page.
+# Velero-relevant bits are the pod annotations on the postgres StatefulSet.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dr-demo
+  labels:
+    app.kubernetes.io/part-of: velero-dr-lab
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres
+  namespace: dr-demo
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: lab-only-password
+  POSTGRES_DB: demo
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: dr-demo
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+    - name: pg
+      port: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: dr-demo
+  labels:
+    app: postgres
+    tier: data
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        tier: data
+      annotations:
+        # FSB opt-in (redundant when installed with --default-volumes-to-fs-backup, kept for clarity)
+        backup.velero.io/backup-volumes: data
+        # Application-consistency hook: flush dirty buffers before Kopia reads the volume
+        pre.hook.backup.velero.io/container: postgres
+        pre.hook.backup.velero.io/command: '["/bin/sh","-c","psql -U postgres -d demo -c CHECKPOINT"]'
+        pre.hook.backup.velero.io/on-error: Fail
+        pre.hook.backup.velero.io/timeout: 30s
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          envFrom:
+            - secretRef:
+                name: postgres
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "demo"]
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { memory: 512Mi }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-fsb
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-content
+  namespace: dr-demo
+data:
+  index.html: |
+    <h1>Velero DR lab</h1>
+    <p>If you can read this after a restore, ConfigMaps came back too.</p>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: dr-demo
+  labels:
+    app: web
+    tier: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+        tier: frontend
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+          volumeMounts:
+            - name: content
+              mountPath: /usr/share/nginx/html
+      volumes:
+        - name: content
+          configMap:
+            name: web-content
+---
+# Simulated live traffic: one INSERT per second. Off (replicas: 0) by default so the
+# strict fingerprint checks in flows 1/3/4 hold; turn on with demo/live-writes.sh on.
+# Each row's item records which postgres server instance accepted it, so after a DR
+# restore you can see exactly where the old site's history ends and the new one begins.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-writer
+  namespace: dr-demo
+  labels:
+    app: order-writer
+    tier: traffic
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: order-writer
+  template:
+    metadata:
+      labels:
+        app: order-writer
+        tier: traffic
+    spec:
+      containers:
+        - name: writer
+          image: postgres:17-alpine
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres
+                  key: POSTGRES_PASSWORD
+            - name: PGHOST
+              value: postgres
+            - name: PGUSER
+              value: postgres
+            - name: PGDATABASE
+              value: demo
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              until pg_isready -q; do echo "waiting for postgres"; sleep 2; done
+              while true; do
+                psql -qtAc "INSERT INTO orders(item)
+                  SELECT 'live@' || to_char(pg_postmaster_start_time(), 'HH24:MI:SS')
+                  RETURNING id, created_at" || sleep 2
+                sleep 1
+              done
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: dr-demo
+spec:
+  selector:
+    app: web
+  ports:
+    - port: 80
+      targetPort: 80

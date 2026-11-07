@@ -1,0 +1,17 @@
+name: lint
+on:
+  push:
+  pull_request:
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck -x -P scripts scripts/*.sh demo/*.sh
+      - name: yamllint
+        run: |
+          pip install --quiet yamllint
+          yamllint -d '{extends: relaxed, rules: {line-length: {max: 140}}}' k8s config gitops
+      - name: jq filters compile
+        run: for f in jq/*.jq; do echo '{"items":[]}' | jq -r -f "$f" >/dev/null; done
